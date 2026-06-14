@@ -1,0 +1,13 @@
+{
+  "network": "opnTestnet",
+  "chainId": 984,
+  "deployer": "0xF828EE743D0CFa9bbD1294D3315e6d0F8a940408",
+  "contracts": {
+    "usdc": "0xDEeED1807d6e681eE2e28925d3F7E65F0F47c56F",
+    "opn": "0x03Fee09c9358431AEA5198c6e7789d83a1509DdD",
+    "deepPool": "0x768a07f6D76ea980cebb2F582E9f20EE1cDc7BE2",
+    "shallowPool": "0x8441886FdD69ff5CfE73983D67b720dDBcd05D33",
+    "router": "0x06cA2346911cD6088DB29C37A9AD7322d04794B7",
+    "vault": "0x1a153565F5d65a37fC9e4DD8b56e681a78354F09"
+  }
+}
