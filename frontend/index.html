@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OPN Swap — JIT Liquidity Router</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.2/ethers.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #070a12;
+    --bg2: #0b0f1a;
+    --panel: #121826;
+    --panel2: #1a2233;
+    --panel3: #222c42;
+    --accent: #4f8cff;
+    --accent-d: #2f6ae0;
+    --accent2: #2ee6a6;
+    --accent3: #b07cff;
+    --text: #eaf0fb;
+    --muted: #8a97b0;
+    --muted2: #5d6a85;
+    --border: #222c42;
+    --good: #2ee6a6;
+    --warn: #ffb454;
+    --glow: 0 0 0 1px rgba(79,140,255,0.0), 0 18px 50px -18px rgba(79,140,255,0.45);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 600px at 80% -10%, rgba(79,140,255,0.13), transparent 60%),
+      radial-gradient(900px 520px at 5% 0%, rgba(176,124,255,0.10), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---------- header ---------- */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px);
+    background: rgba(7,10,18,0.72);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 26px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 34px; height: 34px; border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent), var(--accent3));
+    display: grid; place-items: center; font-weight: 800; font-size: 17px; color: #fff;
+    box-shadow: 0 6px 18px -6px rgba(79,140,255,0.7);
+  }
+  .brand h1 { font-size: 16px; margin: 0; font-weight: 700; letter-spacing: 0.2px; }
+  .brand .sub { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+  .hnav { display: flex; align-items: center; gap: 18px; }
+  .hnav a { color: var(--muted); font-size: 13.5px; font-weight: 500; }
+  .hnav a:hover { color: var(--text); text-decoration: none; }
+  .hctl { display: flex; align-items: center; gap: 12px; }
+  .langtog {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  .langtog button {
+    background: transparent; color: var(--muted); border: none; cursor: pointer;
+    padding: 6px 10px; font-size: 12px; font-weight: 700; width: auto; margin: 0;
+  }
+  .langtog button.on { background: var(--accent); color: #fff; }
+  .statuschip {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted);
+    padding: 6px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  .dot.live { background: var(--good); box-shadow: 0 0 8px var(--good); }
+
+  button {
+    width: 100%; padding: 13px; margin-top: 14px; border: none; border-radius: 11px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-d));
+    color: #fff; font-size: 15px; font-weight: 650; cursor: pointer;
+    transition: transform .08s ease, box-shadow .15s ease, opacity .15s ease;
+    box-shadow: 0 10px 26px -12px rgba(79,140,255,0.8);
+  }
+  button:hover { transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+  button.secondary {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text); box-shadow: none;
+  }
+  button.connect { width: auto; margin: 0; padding: 9px 16px; font-size: 13.5px; border-radius: 9px; }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 26px 80px; }
+
+  /* ---------- hero ---------- */
+  .hero { text-align: center; margin-bottom: 38px; }
+  .pill-tag {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600;
+    color: var(--accent2); background: rgba(46,230,166,0.10);
+    border: 1px solid rgba(46,230,166,0.28); padding: 5px 13px; border-radius: 999px; margin-bottom: 18px;
+  }
+  .hero h2 {
+    font-size: 40px; line-height: 1.1; margin: 0 0 14px; font-weight: 800; letter-spacing: -0.5px;
+    background: linear-gradient(180deg, #fff, #b9c6e6);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero p { font-size: 16px; color: var(--muted); max-width: 640px; margin: 0 auto; }
+
+  .metrics { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+  .metric {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
+    padding: 14px 20px; min-width: 150px; text-align: left;
+  }
+  .metric .n { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .metric .n.g { color: var(--accent2); }
+  .metric .l { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  /* ---------- section heads ---------- */
+  .section { margin-top: 56px; }
+  .section-h { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .section-h .idx {
+    font-size: 12px; font-weight: 800; color: var(--accent);
+    border: 1px solid var(--border); border-radius: 7px; padding: 3px 8px; background: var(--panel);
+  }
+  .section-h h3 { font-size: 20px; margin: 0; font-weight: 750; }
+  .section-h .desc { font-size: 13px; color: var(--muted); margin-left: auto; }
+
+  /* ---------- cards / swap ---------- */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--bg2));
+    border: 1px solid var(--border); border-radius: 16px; padding: 22px;
+  }
+  .card.glow { box-shadow: var(--glow); }
+  .card h4 {
+    font-size: 12px; margin: 0 0 16px; color: var(--muted); font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.7px;
+  }
+  label { display: block; font-size: 12.5px; color: var(--muted); margin: 12px 0 6px; }
+  input, select {
+    width: 100%; padding: 12px 13px; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+    font-size: 15px; transition: border-color .15s ease;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .toggle {
+    display: flex; align-items: center; gap: 10px; margin: 16px 0 4px;
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px;
+  }
+  .toggle input { width: auto; accent-color: var(--accent2); }
+  .toggle label { margin: 0; color: var(--text); font-size: 13.5px; }
+
+  .stat {
+    display: flex; justify-content: space-between; align-items: center; padding: 11px 0;
+    border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .stat:last-of-type { border-bottom: none; }
+  .stat span:first-child { color: var(--muted); }
+  .stat .v { font-variant-numeric: tabular-nums; font-weight: 650; }
+  .good { color: var(--good); }
+  .muted { color: var(--muted); }
+  .improvement-box {
+    margin-top: 18px; text-align: center; background: rgba(46,230,166,0.07);
+    border: 1px solid rgba(46,230,166,0.22); border-radius: 12px; padding: 16px;
+  }
+  .improvement-box .lbl { font-size: 11.5px; color: var(--muted); }
+  .big { font-size: 30px; font-weight: 850; }
+
+  #log {
+    margin-top: 18px; background: #05070d; border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px; color: var(--muted); max-height: 220px; overflow-y: auto; white-space: pre-wrap;
+  }
+
+  /* ---------- how it works ---------- */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .step {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+    position: relative;
+  }
+  .step .num {
+    width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+    font-weight: 800; font-size: 13px; color: #fff; margin-bottom: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent3));
+  }
+  .step h5 { margin: 0 0 6px; font-size: 14px; font-weight: 700; }
+  .step p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+  /* ---------- roadmap ---------- */
+  .roadmap { position: relative; padding-left: 4px; }
+  .rm-item {
+    display: grid; grid-template-columns: 150px 1fr; gap: 20px; padding: 18px 0;
+    border-top: 1px solid var(--border);
+  }
+  .rm-item:first-child { border-top: none; }
+  .rm-phase { display: flex; flex-direction: column; gap: 8px; }
+  .rm-badge {
+    display: inline-flex; align-items: center; gap: 7px; align-self: flex-start;
+    font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  }
+  .rm-badge.done { color: var(--good); background: rgba(46,230,166,0.12); border: 1px solid rgba(46,230,166,0.3); }
+  .rm-badge.active { color: var(--accent); background: rgba(79,140,255,0.12); border: 1px solid rgba(79,140,255,0.32); }
+  .rm-badge.next { color: var(--accent3); background: rgba(176,124,255,0.12); border: 1px solid rgba(176,124,255,0.3); }
+  .rm-badge.later { color: var(--muted); background: var(--panel2); border: 1px solid var(--border); }
+  .rm-q { font-size: 13px; font-weight: 700; color: var(--text); }
+  .rm-body h5 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+  .rm-body ul { margin: 0; padding-left: 18px; }
+  .rm-body li { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+
+  /* ---------- contracts ---------- */
+  .contracts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .craddr {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 11px; padding: 12px 15px;
+  }
+  .craddr .nm { font-size: 13px; font-weight: 650; }
+  .craddr .ad { font-size: 11.5px; color: var(--muted); font-family: ui-monospace, monospace; }
+  .craddr a { font-size: 12px; }
+
+  footer {
+    margin-top: 64px; border-top: 1px solid var(--border); padding: 26px;
+    text-align: center; color: var(--muted2); font-size: 12.5px;
+  }
+  .badge-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .mini { font-size: 11.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px; }
+
+  @media (max-width: 820px) {
+    .grid { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: 1fr 1fr; }
+    .contracts { grid-template-columns: 1fr; }
+    .rm-item { grid-template-columns: 1fr; gap: 10px; }
+    .hnav { display: none; }
+    .hero h2 { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">◎</div>
+    <div>
+      <h1>OPN Swap</h1>
+      <div class="sub">JIT Liquidity Router</div>
+    </div>
+  </div>
+  <nav class="hnav">
+    <a href="#demo" data-i18n="nav.demo">Demo</a>
+    <a href="#how" data-i18n="nav.how">How it works</a>
+    <a href="#roadmap" data-i18n="nav.roadmap">Roadmap</a>
+    <a href="#contracts" data-i18n="nav.contracts">Contracts</a>
+  </nav>
+  <div class="hctl">
+    <span class="statuschip"><span class="dot" id="netdot"></span><span id="netstatus" data-live data-i18n="status.disconnected">not connected</span></span>
+    <span class="muted" id="walletStatus" data-live data-i18n="wallet.disconnected" style="font-size:12.5px;">no wallet</span>
+    <button id="connectBtn" class="connect" data-i18n="btn.connect">Connect Wallet</button>
+    <div class="langtog">
+      <button data-lang="en" class="on">EN</button>
+      <button data-lang="vi">VI</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- HERO -->
+  <section class="hero">
+    <span class="pill-tag">● <span data-i18n="hero.tag">Season 1 · DeFi &amp; Open Finance · OPN Swap</span></span>
+    <h2 data-i18n="hero.title">Just-in-Time liquidity, on demand</h2>
+    <p data-i18n="hero.sub">An aggregating swap router that routes each trade to the best pool and deepens it with just-in-time liquidity for a single transaction — optimal injection computed off-chain, verified on-chain.</p>
+    <div class="metrics">
+      <div class="metric"><div class="n g">−80%</div><div class="l" data-i18n="metric.gas">gas vs on-chain search</div></div>
+      <div class="metric"><div class="n">6/6</div><div class="l" data-i18n="metric.verified">contracts verified</div></div>
+      <div class="metric"><div class="n">11/11</div><div class="l" data-i18n="metric.tests">tests passing</div></div>
+      <div class="metric"><div class="n">984</div><div class="l" data-i18n="metric.chain">OPN testnet chainId</div></div>
+    </div>
+  </section>
+
+  <!-- DEMO -->
+  <section class="section" id="demo">
+    <div class="section-h">
+      <span class="idx">01</span>
+      <h3 data-i18n="demo.h">Live demo</h3>
+      <span class="desc" data-i18n="demo.desc">Compare swap price with and without JIT liquidity</span>
+    </div>
+
+    <div class="grid">
+      <div class="card glow">
+        <h4 data-i18n="swap.title">Swap</h4>
+        <label data-i18n="swap.sell">Sell</label>
+        <div class="row">
+          <input id="amountIn" type="number" value="10000" min="0" />
+          <select id="tokenIn" style="max-width: 120px;">
+            <option value="usdc">USDC</option>
+            <option value="opn">OPN</option>
+          </select>
+        </div>
+        <label data-i18n="swap.receive">Receive (estimated)</label>
+        <div class="row">
+          <input id="amountOut" type="text" value="—" readonly />
+          <select id="tokenOut" style="max-width: 120px;" disabled>
+            <option value="opn">OPN</option>
+          </select>
+        </div>
+
+        <div class="toggle">
+          <input id="useJIT" type="checkbox" checked />
+          <label for="useJIT" data-i18n="swap.jit">Enable JIT liquidity (optimal injection)</label>
+        </div>
+
+        <button id="quoteBtn" disabled data-i18n="btn.quote">Get quote</button>
+        <button id="swapBtn" class="secondary" disabled data-i18n="btn.swap">Execute swap</button>
+      </div>
+
+      <div class="card">
+        <h4 data-i18n="cmp.title">Price comparison</h4>
+        <div class="stat"><span data-i18n="cmp.bare">Output without JIT</span><span class="v muted" id="bareOut">—</span></div>
+        <div class="stat"><span data-i18n="cmp.jit">Output with JIT</span><span class="v good" id="jitOut">—</span></div>
+        <div class="stat"><span data-i18n="cmp.improve">Trader improvement</span><span class="v good" id="improvement">—</span></div>
+        <div class="stat"><span data-i18n="cmp.pool">Pool selected</span><span class="v" id="chosenPool">—</span></div>
+        <div class="stat"><span data-i18n="cmp.inject">JIT injected</span><span class="v" id="jitAmt">—</span></div>
+        <div class="improvement-box">
+          <div class="lbl" data-i18n="cmp.delta">Price improvement from JIT</div>
+          <div class="big good" id="improvementPct">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="log" data-i18n="log.waiting">Waiting for RPC connection…</div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="section" id="how">
+    <div class="section-h">
+      <span class="idx">02</span>
+      <h3 data-i18n="how.h">How it works</h3>
+      <span class="desc" data-i18n="how.desc">One atomic transaction</span>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h5 data-i18n="how.s1.t">Route</h5>
+        <p data-i18n="how.s1.b">The router scans every pool for the pair and picks the one with the best output.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h5 data-i18n="how.s2.t">Optimize off-chain</h5>
+        <p data-i18n="how.s2.b">A concave-PnL search finds the profit-maximizing injection off-chain — no gas spent searching.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h5 data-i18n="how.s3.t">Verify &amp; inject</h5>
+        <p data-i18n="how.s3.b">The contract verifies the hint in one step, then the vault deepens the pool for this trade only.</p>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <h5 data-i18n="how.s4.t">Swap &amp; unwind</h5>
+        <p data-i18n="how.s4.b">The trade executes at the better price; the vault withdraws and keeps its share of the fee for LPs.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section class="section" id="roadmap">
+    <div class="section-h">
+      <span class="idx">03</span>
+      <h3 data-i18n="rm.h">Roadmap</h3>
+      <span class="desc" data-i18n="rm.desc">From proof-of-concept to live infrastructure</span>
+    </div>
+    <div class="roadmap">
+
+      <div class="rm-item">
+        <div class="rm-phase">
+          <span class="rm-badge done">✓ <span data-i18n="rm.p1.s">Shipped</span></span>
+          <span class="rm-q">Phase 0 · MVP</span>
+        </div>
+        <div class="rm-body">
+          <h5 data-i18n="rm.p1.t">Core protocol on OPN testnet</h5>
+          <ul>
+            <li data-i18n="rm.p1.a">Constant-product pools, aggregating router, multi-hop routing</li>
+            <li data-i18n="rm.p1.b">JIT vault with on-chain optimizer (concave-PnL ternary search)</li>
+            <li data-i18n="rm.p1.c">Deployed &amp; verified on OPN testnet · 11/11 tests passing</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rm-item">
+        <div class="rm-phase">
+          <span class="rm-badge active">● <span data-i18n="rm.p2.s">In progress</span></span>
+          <span class="rm-q">Phase 1 · Hardening</span>
+        </div>
+        <div class="rm-body">
+          <h5 data-i18n="rm.p2.t">Security &amp; capital efficiency</h5>
+          <ul>
+            <li data-i18n="rm.p2.a">Off-chain compute / on-chain verify — 80% gas reduction</li>
+            <li data-i18n="rm.p2.b">Multi-LP vault with pro-rata fee shares + abuse caps</li>
+            <li data-i18n="rm.p2.c">Reentrancy guards, safe approvals, permissioned pool registry</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rm-item">
+        <div class="rm-phase">
+          <span class="rm-badge next">→ <span data-i18n="rm.p3.s">Next</span></span>
+          <span class="rm-q">Phase 2 · Robustness</span>
+        </div>
+        <div class="rm-body">
+          <h5 data-i18n="rm.p3.t">Oracles &amp; MEV resistance</h5>
+          <ul>
+            <li data-i18n="rm.p3.a">TWAP price oracle instead of trusting spot reserves</li>
+            <li data-i18n="rm.p3.b">MEV/sandwich protection for the inject-swap-withdraw cycle</li>
+            <li data-i18n="rm.p3.c">Split routing — divide a large trade across multiple pools</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rm-item">
+        <div class="rm-phase">
+          <span class="rm-badge later">◇ <span data-i18n="rm.p4.s">Later</span></span>
+          <span class="rm-q">Phase 3 · Mainnet</span>
+        </div>
+        <div class="rm-body">
+          <h5 data-i18n="rm.p4.t">Production launch</h5>
+          <ul>
+            <li data-i18n="rm.p4.a">Third-party security audit</li>
+            <li data-i18n="rm.p4.b">Keeper network for off-chain hint computation</li>
+            <li data-i18n="rm.p4.c">Permissionless pool/vault creation, governance, mainnet deploy</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- CONTRACTS -->
+  <section class="section" id="contracts">
+    <div class="section-h">
+      <span class="idx">04</span>
+      <h3 data-i18n="ct.h">Deployed contracts</h3>
+      <span class="desc">OPN Testnet · chainId 984</span>
+    </div>
+    <div class="contracts" id="contractList"></div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="badge-row">
+    <span class="mini" data-i18n="ft.b1">6/6 verified on-chain</span>
+    <span class="mini" data-i18n="ft.b2">11/11 tests passing</span>
+    <span class="mini" data-i18n="ft.b3">−80% gas vs search</span>
+  </div>
+  <div data-i18n="ft.note">OPN Swap — JIT Liquidity Router · built for the OPN Chain Builder's Programme</div>
+</footer>
+
+<script>
+// ---------- i18n ----------
+const I18N = {
+  en: {
+    "nav.demo": "Demo", "nav.how": "How it works", "nav.roadmap": "Roadmap", "nav.contracts": "Contracts",
+    "status.disconnected": "not connected", "wallet.disconnected": "no wallet",
+    "btn.connect": "Connect Wallet", "btn.quote": "Get quote", "btn.swap": "Execute swap",
+    "hero.tag": "Season 1 · DeFi & Open Finance · OPN Swap",
+    "hero.title": "Just-in-Time liquidity, on demand",
+    "hero.sub": "An aggregating swap router that routes each trade to the best pool and deepens it with just-in-time liquidity for a single transaction — optimal injection computed off-chain, verified on-chain.",
+    "metric.gas": "gas vs on-chain search", "metric.verified": "contracts verified",
+    "metric.tests": "tests passing", "metric.chain": "OPN testnet chainId",
+    "demo.h": "Live demo", "demo.desc": "Compare swap price with and without JIT liquidity",
+    "swap.title": "Swap", "swap.sell": "Sell", "swap.receive": "Receive (estimated)",
+    "swap.jit": "Enable JIT liquidity (optimal injection)",
+    "cmp.title": "Price comparison", "cmp.bare": "Output without JIT", "cmp.jit": "Output with JIT",
+    "cmp.improve": "Trader improvement", "cmp.pool": "Pool selected", "cmp.inject": "JIT injected",
+    "cmp.delta": "Price improvement from JIT",
+    "log.waiting": "Waiting for RPC connection…",
+    "how.h": "How it works", "how.desc": "One atomic transaction",
+    "how.s1.t": "Route", "how.s1.b": "The router scans every pool for the pair and picks the one with the best output.",
+    "how.s2.t": "Optimize off-chain", "how.s2.b": "A concave-PnL search finds the profit-maximizing injection off-chain — no gas spent searching.",
+    "how.s3.t": "Verify & inject", "how.s3.b": "The contract verifies the hint in one step, then the vault deepens the pool for this trade only.",
+    "how.s4.t": "Swap & unwind", "how.s4.b": "The trade executes at the better price; the vault withdraws and keeps its share of the fee for LPs.",
+    "rm.h": "Roadmap", "rm.desc": "From proof-of-concept to live infrastructure",
+    "rm.p1.s": "Shipped", "rm.p1.t": "Core protocol on OPN testnet",
+    "rm.p1.a": "Constant-product pools, aggregating router, multi-hop routing",
+    "rm.p1.b": "JIT vault with on-chain optimizer (concave-PnL ternary search)",
+    "rm.p1.c": "Deployed & verified on OPN testnet · 11/11 tests passing",
+    "rm.p2.s": "In progress", "rm.p2.t": "Security & capital efficiency",
+    "rm.p2.a": "Off-chain compute / on-chain verify — 80% gas reduction",
+    "rm.p2.b": "Multi-LP vault with pro-rata fee shares + abuse caps",
+    "rm.p2.c": "Reentrancy guards, safe approvals, permissioned pool registry",
+    "rm.p3.s": "Next", "rm.p3.t": "Oracles & MEV resistance",
+    "rm.p3.a": "TWAP price oracle instead of trusting spot reserves",
+    "rm.p3.b": "MEV/sandwich protection for the inject-swap-withdraw cycle",
+    "rm.p3.c": "Split routing — divide a large trade across multiple pools",
+    "rm.p4.s": "Later", "rm.p4.t": "Production launch",
+    "rm.p4.a": "Third-party security audit",
+    "rm.p4.b": "Keeper network for off-chain hint computation",
+    "rm.p4.c": "Permissionless pool/vault creation, governance, mainnet deploy",
+    "ct.h": "Deployed contracts",
+    "ft.b1": "6/6 verified on-chain", "ft.b2": "11/11 tests passing", "ft.b3": "−80% gas vs search",
+    "ft.note": "OPN Swap — JIT Liquidity Router · built for the OPN Chain Builder's Programme",
+    "app.connected": "connected · chainId {n}", "app.rpcErr": "RPC error",
+    "app.walletConnected": "Wallet connected",
+    "app.logRpcOk": "RPC testnet connected (chainId {n}). Quotes ready.",
+    "app.logRouter": "Router: {a}",
+    "app.logNoOpt": "WARNING: jitOptimizer.js not loaded — JIT hint unavailable.",
+    "app.logRpcErr": "RPC error: {e}",
+    "app.logNoMM": "MetaMask not found. Install it to sign testnet transactions.",
+    "app.logWallet": "Wallet connected: {a}",
+    "app.logWalletErr": "Wallet connection error: {e}",
+    "app.logBal": "Wallet balance — USDC: {u} · OPN: {o}",
+    "app.logBadAmount": "Enter a valid amount.",
+    "app.logQuoteErr": "Quote error: {e}",
+    "app.logJitStatic": "JIT staticCall unavailable — showing non-JIT output. ({e})",
+    "app.logQuote": "Quote {a} {ti} → {o} {to} (JIT) vs {b} (no JIT)",
+    "app.logNeedWallet": "Connect MetaMask before swapping.",
+    "app.logNeedQuote": "Get a quote before swapping.",
+    "app.logMint": "Insufficient {t} — minting test tokens to wallet…",
+    "app.logApprove": "Approving {a} {t} for router…",
+    "app.logSwapping": "Swap (JIT={j}, hint={h})… confirm in MetaMask.",
+    "app.logTxSent": "Tx sent: {h} — waiting…",
+    "app.logSwapOk": "✓ Swap done. Received {a} {t}. Gas: {g}",
+    "app.logSwapErr": "Swap error: {e}",
+    "app.poolDeep": "Deep pool", "app.poolShallow": "Shallow pool",
+  },
+  vi: {
+    "nav.demo": "Demo", "nav.how": "Cách hoạt động", "nav.roadmap": "Lộ trình", "nav.contracts": "Hợp đồng",
+    "status.disconnected": "chưa kết nối", "wallet.disconnected": "chưa có ví",
+    "btn.connect": "Kết nối ví", "btn.quote": "Báo giá", "btn.swap": "Thực hiện swap",
+    "hero.tag": "Season 1 · DeFi & Open Finance · OPN Swap",
+    "hero.title": "Thanh khoản Just-in-Time, theo nhu cầu",
+    "hero.sub": "Router tổng hợp định tuyến mỗi giao dịch tới pool tốt nhất và bơm thanh khoản just-in-time chỉ trong đúng một giao dịch — lượng bơm tối ưu tính off-chain, xác minh on-chain.",
+    "metric.gas": "gas so với search on-chain", "metric.verified": "hợp đồng đã verify",
+    "metric.tests": "test pass", "metric.chain": "chainId OPN testnet",
+    "demo.h": "Demo trực tiếp", "demo.desc": "So sánh giá swap có và không JIT liquidity",
+    "swap.title": "Giao dịch", "swap.sell": "Bán", "swap.receive": "Nhận (ước tính)",
+    "swap.jit": "Bật JIT liquidity (bơm thanh khoản tối ưu)",
+    "cmp.title": "So sánh giá", "cmp.bare": "Output không JIT", "cmp.jit": "Output có JIT",
+    "cmp.improve": "Cải thiện cho trader", "cmp.pool": "Pool được chọn", "cmp.inject": "JIT bơm vào",
+    "cmp.delta": "Chênh lệch giá nhờ JIT",
+    "log.waiting": "Đang chờ kết nối RPC…",
+    "how.h": "Cách hoạt động", "how.desc": "Một giao dịch atomic",
+    "how.s1.t": "Định tuyến", "how.s1.b": "Router quét mọi pool của cặp token và chọn pool cho output tốt nhất.",
+    "how.s2.t": "Tối ưu off-chain", "how.s2.b": "Thuật toán tìm trên đường PnL lõm cho ra lượng bơm tối đa lợi nhuận — không tốn gas để tìm.",
+    "how.s3.t": "Verify & bơm", "how.s3.b": "Hợp đồng verify hint trong một bước, rồi vault làm sâu pool chỉ cho giao dịch này.",
+    "how.s4.t": "Swap & rút", "how.s4.b": "Giao dịch thực thi ở giá tốt hơn; vault rút ra và giữ phần phí cho LP.",
+    "rm.h": "Lộ trình", "rm.desc": "Từ proof-of-concept tới hạ tầng vận hành thật",
+    "rm.p1.s": "Đã xong", "rm.p1.t": "Giao thức lõi trên OPN testnet",
+    "rm.p1.a": "Pool constant-product, router tổng hợp, định tuyến multi-hop",
+    "rm.p1.b": "Vault JIT với optimizer on-chain (ternary search trên PnL lõm)",
+    "rm.p1.c": "Đã deploy & verify trên OPN testnet · 11/11 test pass",
+    "rm.p2.s": "Đang làm", "rm.p2.t": "An toàn & hiệu quả vốn",
+    "rm.p2.a": "Tính off-chain / verify on-chain — giảm 80% gas",
+    "rm.p2.b": "Vault đa LP, chia phí theo shares + cap chống lạm dụng",
+    "rm.p2.c": "Reentrancy guard, safe approve, registry pool có kiểm soát",
+    "rm.p3.s": "Tiếp theo", "rm.p3.t": "Oracle & chống MEV",
+    "rm.p3.a": "Oracle giá TWAP thay vì tin hoàn toàn vào reserve hiện tại",
+    "rm.p3.b": "Chống MEV/sandwich cho chu kỳ inject-swap-withdraw",
+    "rm.p3.c": "Split routing — chia lệnh lớn qua nhiều pool",
+    "rm.p4.s": "Về sau", "rm.p4.t": "Ra mắt production",
+    "rm.p4.a": "Audit bảo mật bên thứ ba",
+    "rm.p4.b": "Mạng keeper tính hint off-chain",
+    "rm.p4.c": "Tạo pool/vault không cần cấp phép, governance, deploy mainnet",
+    "ct.h": "Hợp đồng đã deploy",
+    "ft.b1": "6/6 verified on-chain", "ft.b2": "11/11 test pass", "ft.b3": "−80% gas so với search",
+    "ft.note": "OPN Swap — JIT Liquidity Router · xây cho OPN Chain Builder's Programme",
+    "app.connected": "đã kết nối · chainId {n}", "app.rpcErr": "lỗi RPC",
+    "app.walletConnected": "Đã kết nối ví",
+    "app.logRpcOk": "Kết nối RPC testnet OK (chainId {n}). Báo giá đã sẵn sàng.",
+    "app.logRouter": "Router: {a}",
+    "app.logNoOpt": "CẢNH BÁO: jitOptimizer.js chưa nạp — JIT hint không tính được.",
+    "app.logRpcErr": "Lỗi RPC: {e}",
+    "app.logNoMM": "Không tìm thấy MetaMask. Cài MetaMask để ký giao dịch trên testnet.",
+    "app.logWallet": "Ví kết nối: {a}",
+    "app.logWalletErr": "Lỗi kết nối ví: {e}",
+    "app.logBal": "Số dư ví — USDC: {u} · OPN: {o}",
+    "app.logBadAmount": "Nhập số lượng hợp lệ.",
+    "app.logQuoteErr": "Lỗi báo giá: {e}",
+    "app.logJitStatic": "staticCall JIT chưa chạy được — tạm hiển thị output không JIT. ({e})",
+    "app.logQuote": "Báo giá {a} {ti} → {o} {to} (JIT) vs {b} (không JIT)",
+    "app.logNeedWallet": "Kết nối ví MetaMask trước khi swap.",
+    "app.logNeedQuote": "Báo giá trước khi swap.",
+    "app.logMint": "Số dư {t} chưa đủ — mint token test cho ví…",
+    "app.logApprove": "Approve {a} {t} cho router…",
+    "app.logSwapping": "Swap (JIT={j}, hint={h})… xác nhận trên MetaMask.",
+    "app.logTxSent": "Tx gửi: {h} — chờ xác nhận…",
+    "app.logSwapOk": "✓ Swap xong. Nhận {a} {t}. Gas: {g}",
+    "app.logSwapErr": "Lỗi swap: {e}",
+    "app.poolDeep": "Deep pool", "app.poolShallow": "Shallow pool",
+  },
+};
+
+window.__lang = localStorage.getItem("opnswap_lang") || "en";
+
+function applyLang(lang) {
+  window.__lang = lang;
+  localStorage.setItem("opnswap_lang", lang);
+  document.documentElement.lang = lang;
+  const dict = I18N[lang];
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    // Skip elements whose text is owned by app.js at runtime (status chips, log) — applyLang
+    // would otherwise clobber the live state back to its static default on a language switch.
+    if (el.hasAttribute("data-live")) return;
+    const key = el.getAttribute("data-i18n");
+    if (dict[key] !== undefined) el.textContent = dict[key];
+  });
+  document.querySelectorAll(".langtog button").forEach((b) => {
+    b.classList.toggle("on", b.getAttribute("data-lang") === lang);
+  });
+  // Let app.js re-render its dynamic strings (status chip, wallet) in the new language.
+  if (typeof window.__dynamicRender === "function") window.__dynamicRender();
+}
+
+// Look up a key and substitute {placeholders} from params, e.g. tf("app.logRouter", {a: addr}).
+window.t = (key) => (I18N[window.__lang] && I18N[window.__lang][key]) || key;
+window.tf = (key, params) => {
+  let s = window.t(key);
+  if (params) for (const k of Object.keys(params)) s = s.replaceAll("{" + k + "}", params[k]);
+  return s;
+};
+
+document.querySelectorAll(".langtog button").forEach((b) => {
+  b.addEventListener("click", () => applyLang(b.getAttribute("data-lang")));
+});
+
+// Populate contract list from deployment.json.
+(async () => {
+  try {
+    const res = await fetch("deployment.json?" + Date.now());
+    if (!res.ok) return;
+    const d = await res.json();
+    const labels = { usdc: "USDC (mock)", opn: "OPN (mock)", deepPool: "Deep Pool", shallowPool: "Shallow Pool", router: "SwapRouter", vault: "JIT Vault" };
+    const box = document.getElementById("contractList");
+    const base = "https://testnet.iopn.tech/address/";
+    for (const [k, v] of Object.entries(d.contracts)) {
+      const short = v.slice(0, 8) + "…" + v.slice(-6);
+      const el = document.createElement("div");
+      el.className = "craddr";
+      el.innerHTML = `<div><div class="nm">${labels[k] || k}</div><div class="ad">${short}</div></div><a href="${base}${v}#code" target="_blank" rel="noopener">View ↗</a>`;
+      box.appendChild(el);
+    }
+  } catch {}
+})();
+
+applyLang(window.__lang);
+</script>
+
+<script src="jitOptimizer.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

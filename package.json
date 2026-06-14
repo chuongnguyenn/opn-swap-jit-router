@@ -1,0 +1,14 @@
+{
+  "name": "opn-jit-router",
+  "version": "0.1.0",
+  "description": "JIT Liquidity Router — optimal multi-pool split routing + just-in-time liquidity vault for OPN Chain",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^17.4.2",
+    "hardhat": "^2.22.10"
+  }
+}
